@@ -54,10 +54,10 @@ export default function Home() {
   };
 
   const startGame = () => {
-    const finalSetting =
-      setup.setting === PRESET_SETTINGS[PRESET_SETTINGS.length - 1]
-        ? customSetting.trim() || "Свободный сеттинг"
-        : setup.setting;
+    const isCustom = setup.setting === PRESET_SETTINGS[PRESET_SETTINGS.length - 1];
+    const finalSetting = isCustom
+      ? customSetting.trim() || "Свободный сеттинг"
+      : setup.setting;
 
     const s: Setup = { ...setup, setting: finalSetting };
     setSetup(s);
@@ -91,7 +91,6 @@ export default function Home() {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [log]);
 
-  // ============== ЭКРАН НАСТРОЙКИ ==============
   if (!started) {
     return (
       <main className="min-h-screen bg-zinc-900 text-zinc-100 p-4">
@@ -181,14 +180,11 @@ export default function Home() {
     );
   }
 
-  // ============== ИГРОВОЙ ЭКРАН ==============
   return (
     <main className="h-screen flex flex-col bg-zinc-900 text-zinc-100">
       <header className="p-3 border-b border-zinc-800 flex items-center justify-between">
         <h1 className="text-lg font-bold">🎲 AI Quest</h1>
-        <span className="text-xs text-zinc-500">
-          {setup.difficulty}
-        </span>
+        <span className="text-xs text-zinc-500">{setup.difficulty}</span>
       </header>
 
       <div className="flex-1 overflow-y-auto p-3">
