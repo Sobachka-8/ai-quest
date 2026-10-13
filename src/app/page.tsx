@@ -45,16 +45,17 @@ export default function Home() {
 
   const [log, setLog] = useState<LogEntry[]>([]);
   const [action, setAction] = useState("");
-  const [counter, setCounter] = useState(2);
+  const [loading, setLoading] = useState(false);
   const logEndRef = useRef<HTMLDivElement>(null);
 
-  const addLog = (entry: Omit<LogEntry, "id">) => {
-    setLog((prev) => [...prev, { ...entry, id: counter } as LogEntry]);
-    setCounter((c) => c + 1);
+  const addLog = (entry: any) => {
+    const id = Date.now() + Math.floor(Math.random() * 1000);
+    setLog((prev) => [...prev, { ...entry, id }]);
   };
 
   const startGame = () => {
-    const isCustom = setup.setting === PRESET_SETTINGS[PRESET_SETTINGS.length - 1];
+    const isCustom =
+      setup.setting === PRESET_SETTINGS[PRESET_SETTINGS.length - 1];
     const finalSetting = isCustom
       ? customSetting.trim() || "Свободный сеттинг"
       : setup.setting;
@@ -66,7 +67,11 @@ export default function Home() {
       {
         id: 1,
         type: "scene",
-        text: `🎬 Сеттинг: ${finalSetting}\n🧙 ${s.characterName || "Безымянный"}, ${s.characterRole || "странник"}.\n🎯 Цель: ${s.goal || "выжить и найти своё"}.\nСложность: ${s.difficulty}.`,
+        text: `🎬 Сеттинг: ${finalSetting}\n🧙 ${
+          s.characterName || "Безымянный"
+        }, ${s.characterRole || "странник"}.\n🎯 Цель: ${
+          s.goal || "выжить и найти своё"
+        }.\nСложность: ${s.difficulty}.`,
         image: "",
       },
     ]);
@@ -77,14 +82,70 @@ export default function Home() {
     addLog({ type: "dice", text: formatRoll(result) });
   };
 
-  const submitAction = () => {
-    if (!action.trim()) return;
-    addLog({ type: "player", text: `🧙 Ты: ${action}` });
+  const submitAction = async () => {
+    if (!action.trim() || loading) return;
+    const playerAction = action.trim();
+    addLog({ type: "player", text: `🧙 Ты: ${playerAction}` });
     setAction("");
-    addLog({
-      type: "system",
-      text: "📖 (Здесь скоро ответит AI-мастер...)",
-    });
+    setLoading(true);
+
+    const state = {
+      setting: setup.setting,
+      goal: setup.goal || "выжить и найти своё",
+      difficulty: setup.difficulty,
+      character: {
+        name: setup.characterName || "Безымянный",
+        role: setup.characterRole || "странник",
+        traits: [],
+        inventory: [],
+        conditions: [],
+        status: "alive" as const,
+      },
+      npcs: [],
+      failures: [],
+      history: log
+        .filter((e) => e.type === "scene" || e.type === "player")
+        .slice(-5)
+        .map((e) => e.text),
+      isProtagonist: true,
+      ended: null,
+    };
+
+    try {
+      const resp = await fetch("/api/gm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ state, action: playerAction }),
+      });
+      const data = await resp.json();
+
+      if (!resp.ok || !data.ok) {
+        addLog({
+          type: "system",
+          text: `⚠️ Ошибка: ${data.error || "неизвестная"}\n${
+            data.detail || ""
+          }`,
+        });
+        return;
+      }
+
+      const r = data.result;
+      addLog({
+        type: "scene",
+        text: r.narrative || "(пустой ответ)",
+        image: "",
+      });
+      if (r.choices?.length) {
+        addLog({
+          type: "system",
+          text: `Варианты: ${r.choices.join(" · ")}`,
+        });
+      }
+    } catch (err) {
+      addLog({ type: "system", text: `⚠️ Сеть: ${String(err)}` });
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -101,7 +162,9 @@ export default function Home() {
           </p>
 
           <div className="space-y-3">
-            <label className="block text-sm text-zinc-300">Мир / вселенная</label>
+            <label className="block text-sm text-zinc-300">
+              Мир / вселенная
+            </label>
             <select
               value={setup.setting}
               onChange={(e) => setSetup({ ...setup, setting: e.target.value })}
@@ -118,7 +181,7 @@ export default function Home() {
               <input
                 value={customSetting}
                 onChange={(e) => setCustomSetting(e.target.value)}
-                placeholder="Опиши свой мир (например: вселенная Mass Effect)"
+                placeholder="Опиши свой мир"
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm"
               />
             )}
@@ -137,14 +200,14 @@ export default function Home() {
               onChange={(e) =>
                 setSetup({ ...setup, characterRole: e.target.value })
               }
-              placeholder="Роль / класс (напр. охотник, хакер, маг)"
+              placeholder="Роль / класс"
               className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm"
             />
 
             <input
               value={setup.goal}
               onChange={(e) => setSetup({ ...setup, goal: e.target.value })}
-              placeholder="Цель (напр. найти артефакт, выбраться, отомстить)"
+              placeholder="Цель"
               className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm"
             />
 
@@ -159,9 +222,7 @@ export default function Home() {
                     type="radio"
                     name="difficulty"
                     checked={setup.difficulty === d.key}
-                    onChange={() =>
-                      setSetup({ ...setup, difficulty: d.key })
-                    }
+                    onChange={() => setSetup({ ...setup, difficulty: d.key })}
                   />
                   {d.label}
                 </label>
@@ -241,9 +302,10 @@ export default function Home() {
             />
             <button
               onClick={submitAction}
-              className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-medium"
+              disabled={loading}
+              className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 py-2 rounded-lg text-sm font-medium"
             >
-              →
+              {loading ? "…" : "→"}
             </button>
           </div>
           <button
